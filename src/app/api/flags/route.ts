@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getAllFlags,
-  setFlagEnabled,
-  setFlagVariable,
-  setActiveVariation,
-  resetAllFlags,
-} from "@/lib/flags/flag-store";
+import { cookies } from "next/headers";
 import { FLAG_DEFINITIONS } from "@/lib/flags/flag-definitions";
+import {
+  COOKIE_NAME,
+  parseFlagOverrides,
+  serializeFlagOverrides,
+  buildFlagStatesFromOverrides,
+  FlagOverrides,
+} from "@/lib/flags/flag-cookies";
 
 export async function GET() {
-  const flags = getAllFlags();
-  const definitions = FLAG_DEFINITIONS;
+  const cookieStore = await cookies();
+  const overrides = parseFlagOverrides(cookieStore.get(COOKIE_NAME)?.value);
+  const flags = buildFlagStatesFromOverrides(overrides);
 
-  // Merge flag states with variation info from definitions
   const enriched = flags.map((flag) => {
-    const def = definitions.find((d) => d.key === flag.key);
+    const def = FLAG_DEFINITIONS.find((d) => d.key === flag.key);
     return {
       ...flag,
       variations: def?.variations ?? [],
@@ -27,36 +28,62 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   const body = await request.json();
-  const { key, enabled, variableKey, variableValue, variation } = body;
+  const { key, enabled, variation } = body;
 
   if (!key) {
     return NextResponse.json({ error: "Flag key is required" }, { status: 400 });
   }
 
-  let result;
+  // Read current overrides from cookie
+  const cookieStore = await cookies();
+  const overrides = parseFlagOverrides(cookieStore.get(COOKIE_NAME)?.value);
 
+  // Apply the change
+  if (!overrides[key]) {
+    const def = FLAG_DEFINITIONS.find((d) => d.key === key);
+    overrides[key] = {
+      enabled: def?.enabled ?? false,
+      variation: def?.variations?.[0]?.name,
+    };
+  }
+
+  if (enabled !== undefined) {
+    overrides[key].enabled = enabled;
+  }
   if (variation !== undefined) {
-    result = setActiveVariation(key, variation);
-  } else if (variableKey !== undefined && variableValue !== undefined) {
-    result = setFlagVariable(key, variableKey, variableValue);
-  } else if (enabled !== undefined) {
-    result = setFlagEnabled(key, enabled);
-  } else {
-    return NextResponse.json({ error: "No update specified" }, { status: 400 });
+    overrides[key].variation = variation;
   }
 
-  if (!result) {
-    return NextResponse.json({ error: "Flag not found" }, { status: 404 });
-  }
+  // Write updated overrides back to cookie
+  const cookieValue = serializeFlagOverrides(overrides);
+  const response = NextResponse.json({
+    flag: buildFlagStatesFromOverrides(overrides).find((f) => f.key === key),
+    overrides,
+  });
 
-  return NextResponse.json({ flag: result });
+  response.cookies.set(COOKIE_NAME, cookieValue, {
+    path: "/",
+    httpOnly: false, // Client JS needs to read this for polling
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 7, // 7 days
+  });
+
+  return response;
 }
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
   if (body.action === "reset") {
-    resetAllFlags();
-    return NextResponse.json({ success: true });
+    const emptyOverrides: FlagOverrides = {};
+    const cookieValue = serializeFlagOverrides(emptyOverrides);
+    const response = NextResponse.json({ success: true });
+    response.cookies.set(COOKIE_NAME, cookieValue, {
+      path: "/",
+      httpOnly: false,
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+    return response;
   }
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }

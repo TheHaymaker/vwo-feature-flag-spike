@@ -1,15 +1,24 @@
-import { getServerFlag } from "@/lib/vwo/server";
+import { cookies } from "next/headers";
 import { FlagBadge } from "@/components/flag-badge";
+import {
+  COOKIE_NAME,
+  parseFlagOverrides,
+  buildFlagStatesFromOverrides,
+} from "@/lib/flags/flag-cookies";
 
 // Force dynamic rendering so flags are evaluated on each request
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const widgetFlag = await getServerFlag("new_dashboard_widget");
+  const cookieStore = await cookies();
+  const overrides = parseFlagOverrides(cookieStore.get(COOKIE_NAME)?.value);
+  const flags = buildFlagStatesFromOverrides(overrides);
+  const widgetState = flags.find((f) => f.key === "new_dashboard_widget");
 
+  const isEnabled = widgetState?.enabled ?? false;
   const widgetTitle =
-    (widgetFlag.variables.widget_title as string) ?? "Analytics Overview";
-  const showChart = (widgetFlag.variables.show_chart as boolean) ?? true;
+    (widgetState?.variables.widget_title as string) ?? "Analytics Overview";
+  const showChart = (widgetState?.variables.show_chart as boolean) ?? true;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
@@ -17,9 +26,9 @@ export default async function DashboardPage() {
         <h1 className="text-3xl font-bold tracking-tight mb-2">Dashboard</h1>
         <p className="text-muted-foreground">
           This page uses{" "}
-          <strong>server-side flag evaluation</strong> — the flag is checked in a
-          Server Component at request time, with zero client JavaScript for the
-          flag logic.
+          <strong>server-side flag evaluation</strong> — the flag is read from a
+          cookie-persisted override on the server at request time, with zero
+          client JavaScript for the flag logic.
         </p>
       </div>
 
@@ -47,11 +56,11 @@ export default async function DashboardPage() {
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold">
-              {widgetFlag.isEnabled ? widgetTitle : "New Analytics Widget"}
+              {isEnabled ? widgetTitle : "New Analytics Widget"}
             </h2>
             <FlagBadge
               flagKey="new_dashboard_widget"
-              enabled={widgetFlag.isEnabled}
+              enabled={isEnabled}
             />
           </div>
           <span className="text-xs font-mono text-muted-foreground bg-muted px-2 py-1 rounded">
@@ -59,11 +68,10 @@ export default async function DashboardPage() {
           </span>
         </div>
         <div className="p-6">
-          {widgetFlag.isEnabled ? (
+          {isEnabled ? (
             <div>
               {showChart && (
                 <div className="mb-6">
-                  {/* Simple ASCII-style chart visualization */}
                   <p className="text-sm text-muted-foreground mb-3">
                     Conversion Rate — Last 7 Days
                   </p>

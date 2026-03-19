@@ -41,7 +41,11 @@ export function FlagProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch("/api/flags");
       const data = await res.json();
-      setFlags(data.flags);
+      setFlags((prev) => {
+        const incoming = JSON.stringify(data.flags);
+        const current = JSON.stringify(prev);
+        return incoming === current ? prev : data.flags;
+      });
     } catch (err) {
       console.error("Failed to fetch flags:", err);
     } finally {

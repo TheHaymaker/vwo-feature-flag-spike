@@ -28,7 +28,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   const body = await request.json();
-  const { key, enabled, variation } = body;
+  const { key, enabled, variation, variableKey, variableValue } = body;
 
   if (!key) {
     return NextResponse.json({ error: "Flag key is required" }, { status: 400 });
@@ -52,6 +52,12 @@ export async function PATCH(request: NextRequest) {
   }
   if (variation !== undefined) {
     overrides[key].variation = variation;
+  }
+  if (variableKey !== undefined && variableValue !== undefined) {
+    if (!overrides[key].variables) {
+      overrides[key].variables = {};
+    }
+    overrides[key].variables![variableKey] = variableValue;
   }
 
   // Write updated overrides back to cookie

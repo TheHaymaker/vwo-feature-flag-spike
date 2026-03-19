@@ -7,6 +7,7 @@ export interface FlagOverrides {
   [flagKey: string]: {
     enabled: boolean;
     variation?: string;
+    variables?: Record<string, unknown>;
   };
 }
 
@@ -52,6 +53,11 @@ export function buildFlagStatesFromOverrides(
       if (variation) {
         Object.assign(variables, variation.variables);
       }
+    }
+
+    // Apply per-variable overrides from cookie (highest priority)
+    if (override?.variables) {
+      Object.assign(variables, override.variables);
     }
 
     return {
